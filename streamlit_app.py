@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 import pandas as pd
 import plotly.express as px
+import re
 
 
 # Page configuration
@@ -15,6 +16,36 @@ st.set_page_config(
 
 # API endpoint
 API_ENDPOINT = "http://15.185.99.179:3000/analyze"
+
+def format_currency(value):
+    """Format currency values to 2 decimal places"""
+    if isinstance(value, (int, float)):
+        return f"{value:.2f}"
+    elif isinstance(value, str):
+        try:
+            # Try to convert string to float and format
+            num_value = float(value.replace(',', ''))
+            return f"{num_value:.2f}"
+        except (ValueError, TypeError):
+            return value
+    return value
+
+def format_text_with_currency(text):
+    """Format text that contains currency values to 2 decimal places"""
+    if not isinstance(text, str):
+        return text
+    
+    # Find and replace decimal numbers with many places
+    pattern = r'(\d+\.\d{3,})'  # Matches numbers with 3 or more decimal places
+    
+    def replace_func(match):
+        try:
+            number = float(match.group(1))
+            return f"{number:.2f}"
+        except ValueError:
+            return match.group(1)
+    
+    return re.sub(pattern, replace_func, text)
 
 def make_api_request_with_files(data, statement_file=None, supporting_file=None):
     """Make POST request to the Flask API with file uploads"""
@@ -63,13 +94,21 @@ def display_analysis_results(result):
             st.info(f"**Duration:** {info.get('statementPeriodDuration', 'N/A')}")
         
         with col2:
-            st.info(f"**Bound Amount:** {info.get('boundAmount', 'N/A')}")
+            # Format bound amount to 2 decimal places
+            bound_amount = info.get('boundAmount', 'N/A')
+            if bound_amount != 'N/A':
+                bound_amount = format_currency(bound_amount)
+            st.info(f"**Bound Amount:** {bound_amount}")
+            
             if "bankStatementAge" in info:
                 st.info(f"**Statement Age:** {info['bankStatementAge']}")
         
         # Explanation
         st.write("**Explanation:**")
-        st.write(info.get("explanation", "No explanation provided"))
+        explanation = info.get("explanation", "No explanation provided")
+        # Format any currency values in the explanation
+        explanation = format_text_with_currency(explanation)
+        st.write(explanation)
         
         # Available Documents
         if "availableDocuments" in info:
@@ -89,7 +128,9 @@ def display_analysis_results(result):
             if fund_check.get("isMaintained", False):
                 st.success("**Fund Maintenance: ✅ PASSED**")
                 if "finalSummary" in fund_check:
-                    st.write(fund_check["finalSummary"])
+                    # Format currency values in the summary
+                    summary = format_text_with_currency(fund_check["finalSummary"])
+                    st.write(summary)
             else:
                 st.error("**Fund Maintenance: ❌ FAILED**")
         
@@ -104,20 +145,27 @@ def display_analysis_results(result):
         st.error("**Issues Found:**")
         for issue in result["Issues"]:
             with st.expander(f"❌ {issue.get('type', 'Unknown')} - {issue.get('issue', 'Unknown')}"):
-                st.write(issue.get('message', 'No message'))
+                message = issue.get('message', 'No message')
+                # Format currency values in the message
+                message = format_text_with_currency(message)
+                st.write(message)
                 if "details" in issue:
                     st.write("**Details:**")
                     details = issue["details"]
                     for key, value in details.items():
                         if value is not None:
-                            st.write(f"• {key}: {value}")
+                            # Format currency values in details
+                            formatted_value = format_text_with_currency(str(value))
+                            st.write(f"• {key}: {formatted_value}")
     
     # Calculation Details (if available)
     if "calculationDetails" in result:
         with st.expander("📊 Calculation Details"):
             details = result["calculationDetails"]
             for key, value in details.items():
-                st.write(f"**{key}:** {value}")
+                # Format currency values in calculation details
+                formatted_value = format_text_with_currency(str(value))
+                st.write(f"**{key}:** {formatted_value}")
     
     # All Transactions
     if "allTransactions" in result and result["allTransactions"]:
@@ -194,7 +242,7 @@ def display_analysis_results(result):
                         yaxis_title="Account Balance",
                         height=400,
                         showlegend=False,
-                        yaxis=dict(tickformat=',.0f')
+                        yaxis=dict(tickformat=',.2f')  # Format y-axis to 2 decimal places
                     )
                     
                     # Display the chart
@@ -216,12 +264,15 @@ def display_analysis_results(result):
             st.markdown("---")
             st.write("**Transaction Details:**")
             
-            # Display all transactions
+            # Display all transactions with formatted amounts
             for i, trans in enumerate(transactions):
+                transaction_amount = format_currency(trans.get('transactionAmount', 'N/A'))
+                balance_amount = format_currency(trans.get('totalBalanceInAccount', 'N/A'))
+                
                 st.write(f"**{i+1}.** {trans.get('transactionDate', 'N/A')} - "
                         f"{trans.get('transactionType', 'N/A')} - "
-                        f"Amount: {trans.get('transactionAmount', 'N/A')} - "
-                        f"Balance: {trans.get('totalBalanceInAccount', 'N/A')}")
+                        f"Amount: {transaction_amount} - "
+                        f"Balance: {balance_amount}")
 
 # Main app
 def main():
