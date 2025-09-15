@@ -122,6 +122,14 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
                     st.write(summary)
             else:
                 st.error("**Fund Maintenance: The amount in bank account is not sufficient**")
+
+        # # Exchange Rate section with OANDA source information
+        # st.subheader("💱 Exchange Rate Information")
+        current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.info(
+        "📈 **Exchange Rate Source:** OANDA  \n"  # <-- two spaces before \n
+        f"🕐 **Extract Date & Time:** {current_datetime}"
+    )
         
         # Basic information
         col1, col2 = st.columns(2)
@@ -189,11 +197,11 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
             details = result["calculationDetails"]
             
             # Add exchange rate source information at the top
-            st.info("📈 **Exchange Rate Source:** OANDA")
+            # st.info("📈 **Exchange Rate Source:** OANDA")
             
             # Add current date and time
-            current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            st.info(f"🕐 **Analysis Date & Time:** {current_datetime}")
+            # current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # st.info(f"🕐 **Analysis Date & Time:** {current_datetime}")
             
             st.markdown("---")
             
@@ -426,9 +434,6 @@ def main():
             key="statement_url"
         )
     
-    # # Exchange Rate section with OANDA source information
-    # st.subheader("💱 Exchange Rate Information")
-    # st.info("📈 **Exchange Rate Source:** OANDA")
     
     exchange_rate_plus = st.number_input(
         "Exchange Rate Addition (%)",
