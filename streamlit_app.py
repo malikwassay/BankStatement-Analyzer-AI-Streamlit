@@ -174,7 +174,7 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
                 # Format currency values in the message
                 message = format_text_with_currency(message)
                 st.write(message)
-                if "details" not in issue and "details" in issue:
+                if "details" in issue:
                     st.write("**Details:**")
                     details = issue["details"]
                     for key, value in details.items():
