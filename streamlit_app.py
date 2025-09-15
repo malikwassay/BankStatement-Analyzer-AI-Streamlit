@@ -56,7 +56,7 @@ def make_api_request_with_files(data, statement_file=None, supporting_file=None)
         if supporting_file is not None:
             files['supporting_file'] = ('supporting.pdf', supporting_file.getvalue(), 'application/pdf')
         
-        response = requests.post(API_ENDPOINT, data=data, files=files, timeout=300)
+        response = requests.post(API_ENDPOINT, data=data, files=files, timeout=3000)
         return response.json(), response.status_code
     except requests.exceptions.RequestException as e:
         return {"error": f"Request failed: {str(e)}"}, 500
@@ -64,12 +64,37 @@ def make_api_request_with_files(data, statement_file=None, supporting_file=None)
 def make_api_request_with_urls(data):
     """Make POST request to the Flask API with URLs only"""
     try:
-        response = requests.post(API_ENDPOINT, json=data, timeout=300)
+        response = requests.post(API_ENDPOINT, json=data, timeout=3000)
         return response.json(), response.status_code
     except requests.exceptions.RequestException as e:
         return {"error": f"Request failed: {str(e)}"}, 500
 
-def display_analysis_results(result):
+def get_friendly_field_name(field_name):
+    """Convert camelCase field names to user-friendly titles"""
+    field_mapping = {
+        # UK fields
+        "boundAmountDependant_PKR": "Bound Amount Of Dependent In PKR",
+        "boundAmountStudent_PKR": "Bound Amount of Student In PKR",
+        "dependant": "Dependant",
+        "exchangeRateGBP": "Exchange Rate GBP After Addition",
+        "locationStatus": "Location Status",
+        "tuitionFees_PKR": "Tuition Fees In PKR",
+        "universityName": "University Name",
+        "exchangeRateGBPOriginal": "Exchange Rate GBP Original From OANDA",
+        
+        # Australia fields
+        "exchangeRateAUS": "Exchange Rate AUD After Addition",
+        "exchangeRateAUSOriginal": "Exchange Rate AUD Original From OANDA",
+        "durationToCheck": "Duration To Check",
+        "livingExpense_PKR": "Living Expense In PKR",
+        "oneYearFees_PKR": "One Year Fees In PKR",
+        "totalAmountToCheck": "Total Amount To Check",
+        "travelExpense_PKR": "Travel Expense In PKR"
+    }
+    
+    return field_mapping.get(field_name, field_name)
+
+def display_analysis_results(result, exchange_rate_plus=0, location=""):
     """Display the analysis results in a formatted way"""
     if "error" in result:
         st.error(f"Error: {result['error']}")
@@ -85,6 +110,18 @@ def display_analysis_results(result):
             st.success(f"🟢 **Verdict: {verdict}**")
         else:
             st.error(f"🔴 **Verdict: {verdict}**")
+        
+        # Fund Maintenance Check - Display right after verdict
+        if "fundMaintenanceCheck" in info:
+            fund_check = info["fundMaintenanceCheck"]
+            if fund_check.get("isMaintained", False):
+                st.success("**Fund Maintenance: The amount in bank account is sufficient**")
+                if "finalSummary" in fund_check:
+                    # Format currency values in the summary
+                    summary = format_text_with_currency(fund_check["finalSummary"])
+                    st.write(summary)
+            else:
+                st.error("**Fund Maintenance: The amount in bank account is not sufficient**")
         
         # Basic information
         col1, col2 = st.columns(2)
@@ -122,18 +159,6 @@ def display_analysis_results(result):
             for auth in info["validAuthentications"]:
                 st.write(f"✅ {auth.get('element', 'N/A')}: {auth.get('status', 'N/A')}")
         
-        # Fund Maintenance Check
-        if "fundMaintenanceCheck" in info:
-            fund_check = info["fundMaintenanceCheck"]
-            if fund_check.get("isMaintained", False):
-                st.success("**Fund Maintenance: ✅ PASSED**")
-                if "finalSummary" in fund_check:
-                    # Format currency values in the summary
-                    summary = format_text_with_currency(fund_check["finalSummary"])
-                    st.write(summary)
-            else:
-                st.error("**Fund Maintenance: ❌ FAILED**")
-        
         # Supported Transactions
         if "supportedTransactions" in info and info["supportedTransactions"]:
             st.write("**Supported Transactions:**")
@@ -149,7 +174,7 @@ def display_analysis_results(result):
                 # Format currency values in the message
                 message = format_text_with_currency(message)
                 st.write(message)
-                if "details" in issue:
+                if "details" not in issue and "details" in issue:
                     st.write("**Details:**")
                     details = issue["details"]
                     for key, value in details.items():
@@ -162,10 +187,94 @@ def display_analysis_results(result):
     if "calculationDetails" in result:
         with st.expander("📊 Calculation Details"):
             details = result["calculationDetails"]
-            for key, value in details.items():
-                # Format currency values in calculation details
-                formatted_value = format_text_with_currency(str(value))
-                st.write(f"**{key}:** {formatted_value}")
+            
+            # Add exchange rate source information at the top
+            st.info("📈 **Exchange Rate Source:** OANDA")
+            
+            # Add current date and time
+            current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            st.info(f"🕐 **Analysis Date & Time:** {current_datetime}")
+            
+            st.markdown("---")
+            
+            # Check if dependant is True to determine whether to show dependant-related fields (UK only)
+            has_dependant = details.get("dependant", False)
+            
+            # Calculate original exchange rates based on location
+            details_with_original = details.copy()
+            
+            if location.lower() == "uk" and "exchangeRateGBP" in details and exchange_rate_plus > 0:
+                exchange_rate_gbp = float(details["exchangeRateGBP"])
+                exchange_rate_gbp_original = exchange_rate_gbp / (1 + exchange_rate_plus)
+                details_with_original["exchangeRateGBPOriginal"] = exchange_rate_gbp_original
+            
+            elif location.lower() == "australia" and "exchangeRateAUS" in details and exchange_rate_plus > 0:
+                exchange_rate_aus = float(details["exchangeRateAUS"])
+                exchange_rate_aus_original = exchange_rate_aus / (1 + exchange_rate_plus)
+                details_with_original["exchangeRateAUSOriginal"] = exchange_rate_aus_original
+            
+            # Define field order based on location
+            if location.lower() == "uk":
+                field_order = [
+                    "exchangeRateGBPOriginal",
+                    "exchangeRateGBP", 
+                    "dependant",
+                    "boundAmountStudent_PKR",
+                    "boundAmountDependant_PKR",
+                    "locationStatus",
+                    "tuitionFees_PKR",
+                    "universityName"
+                ]
+            else:  # Australia
+                field_order = [
+                    "exchangeRateAUSOriginal",
+                    "exchangeRateAUS",
+                    "durationToCheck",
+                    "livingExpense_PKR",
+                    "oneYearFees_PKR",
+                    "totalAmountToCheck",
+                    "travelExpense_PKR"
+                ]
+            
+            # Display fields in the specified order
+            for key in field_order:
+                if key in details_with_original:
+                    value = details_with_original[key]
+                    
+                    # Skip boundAmountDependant_PKR and dependant if has_dependant is False (UK only)
+                    if location.lower() == "uk" and not has_dependant and key in ["boundAmountDependant_PKR", "dependant"]:
+                        continue
+                    
+                    # Special handling for dependant field to show Yes/No instead of True/False
+                    if key == "dependant":
+                        formatted_value = "Yes" if value else "No"
+                    else:
+                        # Format currency values in calculation details
+                        formatted_value = format_text_with_currency(str(value))
+                    
+                    # Get user-friendly field name
+                    friendly_name = get_friendly_field_name(key)
+                    
+                    st.write(f"**{friendly_name}:** {formatted_value}")
+            
+            # Display any remaining fields that weren't in the predefined order
+            for key, value in details_with_original.items():
+                if key not in field_order and key != "insideLondon":
+                    # Skip boundAmountDependant_PKR and dependant if has_dependant is False (UK only)
+                    if location.lower() == "uk" and not has_dependant and key in ["boundAmountDependant_PKR", "dependant"]:
+                        continue
+                    
+                    # Special handling for dependant field to show Yes/No instead of True/False
+                    if key == "dependant":
+                        formatted_value = "Yes" if value else "No"
+                    else:
+                        # Format currency values in calculation details
+                        formatted_value = format_text_with_currency(str(value))
+                    
+                    # Get user-friendly field name
+                    friendly_name = get_friendly_field_name(key)
+                    
+                    st.write(f"**{friendly_name}:** {formatted_value}")
     
     # All Transactions
     if "allTransactions" in result and result["allTransactions"]:
@@ -317,13 +426,17 @@ def main():
             key="statement_url"
         )
     
+    # # Exchange Rate section with OANDA source information
+    # st.subheader("💱 Exchange Rate Information")
+    # st.info("📈 **Exchange Rate Source:** OANDA")
+    
     exchange_rate_plus = st.number_input(
         "Exchange Rate Addition (%)",
         min_value=0.0,
         max_value=100.0,
         value=5.0,
         step=0.1,
-        help="Additional percentage to add to the exchange rate"
+        help="Additional percentage to add to the base exchange rate from OANDA. This provides a buffer for exchange rate fluctuations."
     ) / 100  # Convert percentage to decimal
     
     # Location-specific fields
@@ -438,9 +551,9 @@ def main():
     # Check required fields
     required_fields_filled = (statement_file is not None or statement_url)
     if location == "Australia":
-        required_fields_filled = required_fields_filled and one_year_fees > 0
+        required_fields_filled = required_fields_filled and one_year_fees >= 0
     else:
-        required_fields_filled = required_fields_filled and university_name and tuition_fees > 0
+        required_fields_filled = required_fields_filled and university_name and tuition_fees >= 0
     
     if not required_fields_filled:
         st.warning("Please fill in all required fields marked with * and provide a bank statement")
@@ -468,7 +581,7 @@ def main():
         # Display results
         if status_code == 200:
             st.success("Analysis completed successfully!")
-            display_analysis_results(result)
+            display_analysis_results(result, exchange_rate_plus, location)
         else:
             st.error(f"Analysis failed with status code: {status_code}")
             if "error" in result:
@@ -479,7 +592,8 @@ def main():
     # Footer
     st.markdown("---")
     st.markdown("**Note:** This tool analyzes bank statements for potential tampering, editing, or fabrication. "
-               "The analysis includes authentication checks, fund maintenance verification, and transaction analysis.")
+               "The analysis includes authentication checks, fund maintenance verification, and transaction analysis. "
+               "Exchange rates are sourced from OANDA with an additional buffer percentage for fluctuations.")
 
 if __name__ == "__main__":
     main()
