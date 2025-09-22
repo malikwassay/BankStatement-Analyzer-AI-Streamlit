@@ -73,8 +73,8 @@ def get_friendly_field_name(field_name):
     """Convert camelCase field names to user-friendly titles"""
     field_mapping = {
         # UK fields
-        "boundAmountDependant_PKR": "Bound Amount Of Dependent In PKR",
-        "boundAmountStudent_PKR": "Bound Amount of Student In PKR",
+        "boundAmountDependant_PKR": "Living Expense Of Dependent In PKR",
+        "boundAmountStudent_PKR": "Living Expense of Student In PKR",
         "dependant": "Dependant",
         "exchangeRateGBP": "Exchange Rate GBP After Addition",
         "locationStatus": "Location Status",
@@ -88,7 +88,7 @@ def get_friendly_field_name(field_name):
         "durationToCheck": "Duration To Check",
         "livingExpense_PKR": "Living Expense In PKR",
         "oneYearFees_PKR": "One Year Fees In PKR",
-        "totalAmountToCheck": "Total Amount To Check",
+        # "totalAmountToCheck": "Total Amount To Check",
         "travelExpense_PKR": "Travel Expense In PKR"
     }
     
@@ -123,13 +123,12 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
             else:
                 st.error("**Fund Maintenance: The amount in bank account is not sufficient**")
 
-        # # Exchange Rate section with OANDA source information
-        # st.subheader("💱 Exchange Rate Information")
+        # Exchange Rate section with OANDA source information
         current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         st.info(
-        "📈 **Exchange Rate Source:** OANDA  \n"  # <-- two spaces before \n
-        f"🕐 **Extract Date & Time:** {current_datetime}"
-    )
+            "📈 **Exchange Rate Source:** OANDA  \n"
+            f"🕐 **Extract Date & Time:** {current_datetime}"
+        )
         
         # Basic information
         col1, col2 = st.columns(2)
@@ -196,13 +195,6 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
         with st.expander("📊 Calculation Details"):
             details = result["calculationDetails"]
             
-            # Add exchange rate source information at the top
-            # st.info("📈 **Exchange Rate Source:** OANDA")
-            
-            # Add current date and time
-            # current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # st.info(f"🕐 **Analysis Date & Time:** {current_datetime}")
-            
             st.markdown("---")
             
             # Check if dependant is True to determine whether to show dependant-related fields (UK only)
@@ -211,18 +203,23 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
             # Calculate original exchange rates based on location
             details_with_original = details.copy()
             
-            if location.lower() == "uk" and "exchangeRateGBP" in details and exchange_rate_plus > 0:
+            # Fix: Check for both "uk" and "united kingdom"
+            location_lower = location.lower()
+            is_uk = location_lower in ["uk", "united kingdom"]
+            is_australia = location_lower in ["australia", "aus"]
+            
+            if is_uk and "exchangeRateGBP" in details and exchange_rate_plus > 0:
                 exchange_rate_gbp = float(details["exchangeRateGBP"])
                 exchange_rate_gbp_original = exchange_rate_gbp / (1 + exchange_rate_plus)
                 details_with_original["exchangeRateGBPOriginal"] = exchange_rate_gbp_original
             
-            elif location.lower() == "australia" and "exchangeRateAUS" in details and exchange_rate_plus > 0:
+            elif is_australia and "exchangeRateAUS" in details and exchange_rate_plus > 0:
                 exchange_rate_aus = float(details["exchangeRateAUS"])
                 exchange_rate_aus_original = exchange_rate_aus / (1 + exchange_rate_plus)
                 details_with_original["exchangeRateAUSOriginal"] = exchange_rate_aus_original
             
             # Define field order based on location
-            if location.lower() == "uk":
+            if is_uk:
                 field_order = [
                     "exchangeRateGBPOriginal",
                     "exchangeRateGBP", 
@@ -240,17 +237,19 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
                     "durationToCheck",
                     "livingExpense_PKR",
                     "oneYearFees_PKR",
-                    "totalAmountToCheck",
                     "travelExpense_PKR"
                 ]
             
+            # Fields to exclude from display
+            excluded_fields = ["totalAmountToCheck", "insideLondon"]
+            
             # Display fields in the specified order
             for key in field_order:
-                if key in details_with_original:
+                if key in details_with_original and key not in excluded_fields:
                     value = details_with_original[key]
                     
-                    # Skip boundAmountDependant_PKR and dependant if has_dependant is False (UK only)
-                    if location.lower() == "uk" and not has_dependant and key in ["boundAmountDependant_PKR", "dependant"]:
+                    # Skip boundAmountDependant_PKR if has_dependant is False (UK only)
+                    if is_uk and not has_dependant and key == "boundAmountDependant_PKR":
                         continue
                     
                     # Special handling for dependant field to show Yes/No instead of True/False
@@ -267,9 +266,30 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
             
             # Display any remaining fields that weren't in the predefined order
             for key, value in details_with_original.items():
+                if key not in field_order and key not in excluded_fields:
+                    # Skip boundAmountDependant_PKR if has_dependant is False (UK only)
+                    if is_uk and not has_dependant and key == "boundAmountDependant_PKR":
+                        continue
+                    
+                    # Special handling for dependant field to show Yes/No instead of True/False
+                    if key == "dependant":
+                        formatted_value = "Yes" if value else "No"
+                    else:
+                        # Format currency values in calculation details
+                        formatted_value = format_text_with_currency(str(value))
+                    
+                    # Get user-friendly field name
+                    friendly_name = get_friendly_field_name(key)
+                    
+                    st.write(f"**{friendly_name}:** {formatted_value}")
+    
+    # All Transactions section continues as before...
+    # (Rest of the function remains the same)            
+            # Display any remaining fields that weren't in the predefined order
+            for key, value in details_with_original.items():
                 if key not in field_order and key != "insideLondon":
-                    # Skip boundAmountDependant_PKR and dependant if has_dependant is False (UK only)
-                    if location.lower() == "uk" and not has_dependant and key in ["boundAmountDependant_PKR", "dependant"]:
+                    # Skip boundAmountDependant_PKR if has_dependant is False (UK only)
+                    if is_uk and not has_dependant and key == "boundAmountDependant_PKR":
                         continue
                     
                     # Special handling for dependant field to show Yes/No instead of True/False
@@ -390,7 +410,7 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
                         f"{trans.get('transactionType', 'N/A')} - "
                         f"Amount: {transaction_amount} - "
                         f"Balance: {balance_amount}")
-
+                
 # Main app
 def main():
     st.title("🏦 Bank Statement Analysis Tool")
