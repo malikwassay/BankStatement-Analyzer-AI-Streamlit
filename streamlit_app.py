@@ -88,9 +88,23 @@ def get_friendly_field_name(field_name):
         "durationToCheck": "Duration To Check",
         "livingExpense_PKR": "Living Expense In PKR",
         "oneYearFees_PKR": "One Year Fees In PKR",
-        # "totalAmountToCheck": "Total Amount To Check",
-        "travelExpense_PKR": "Travel Expense In PKR"
+        "travelExpense_PKR": "Travel Expense In PKR",
+        
+        # Issue detail fields
+        "dropDate": "Drop Date",
+        "requiredAmount": "Required Amount",
+        "daysRemainingTo28": "Days Remaining To 28",
+        "date": "Date",
+        "amount": "Amount",
+        "weeklyPeriod": "Weekly Period",
+        "weeklyTotal": "Weekly Total"
     }
+    
+    # Handle dynamic daysRemainingTo fields (e.g., daysRemainingTo30, daysRemainingTo45, etc.)
+    if field_name.startswith("daysRemainingTo"):
+        # Extract the number after "daysRemainingTo"
+        number_part = field_name.replace("daysRemainingTo", "")
+        return f"Days Remaining To {number_part}"
     
     return field_mapping.get(field_name, field_name)
 
@@ -188,7 +202,9 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
                         if value is not None:
                             # Format currency values in details
                             formatted_value = format_text_with_currency(str(value))
-                            st.write(f"• {key}: {formatted_value}")
+                            # Use the friendly field name function for better formatting
+                            friendly_key = get_friendly_field_name(key)
+                            st.write(f"• {friendly_key}: {formatted_value}")
     
     # Calculation Details (if available)
     if "calculationDetails" in result:
@@ -267,27 +283,6 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
             # Display any remaining fields that weren't in the predefined order
             for key, value in details_with_original.items():
                 if key not in field_order and key not in excluded_fields:
-                    # Skip boundAmountDependant_PKR if has_dependant is False (UK only)
-                    if is_uk and not has_dependant and key == "boundAmountDependant_PKR":
-                        continue
-                    
-                    # Special handling for dependant field to show Yes/No instead of True/False
-                    if key == "dependant":
-                        formatted_value = "Yes" if value else "No"
-                    else:
-                        # Format currency values in calculation details
-                        formatted_value = format_text_with_currency(str(value))
-                    
-                    # Get user-friendly field name
-                    friendly_name = get_friendly_field_name(key)
-                    
-                    st.write(f"**{friendly_name}:** {formatted_value}")
-    
-    # All Transactions section continues as before...
-    # (Rest of the function remains the same)            
-            # Display any remaining fields that weren't in the predefined order
-            for key, value in details_with_original.items():
-                if key not in field_order and key != "insideLondon":
                     # Skip boundAmountDependant_PKR if has_dependant is False (UK only)
                     if is_uk and not has_dependant and key == "boundAmountDependant_PKR":
                         continue
@@ -410,7 +405,7 @@ def display_analysis_results(result, exchange_rate_plus=0, location=""):
                         f"{trans.get('transactionType', 'N/A')} - "
                         f"Amount: {transaction_amount} - "
                         f"Balance: {balance_amount}")
-                
+                                
 # Main app
 def main():
     st.title("🏦 Bank Statement Analysis Tool")
